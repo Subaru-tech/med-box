@@ -1,0 +1,48 @@
+name: smart_notice_board
+description: Smart Digital Notice Board - IoT Notice Board System with Flutter + Firebase + ESP32
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+
+  # Firebase
+  firebase_core: ^3.10.1
+  firebase_auth: ^5.5.0
+  cloud_firestore: ^5.6.1
+  firebase_messaging: ^15.2.2
+
+  # State Management
+  provider: ^6.1.2
+
+  # UI
+  google_fonts: ^6.2.1
+  fluttertoast: ^8.2.10
+  intl: ^0.19.0
+
+  # Utils
+  shared_preferences: ^2.3.5
+  connectivity_plus: ^6.1.1
+  http: ^1.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/app_logo.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true

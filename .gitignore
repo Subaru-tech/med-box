@@ -1,0 +1,46 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub/
+build/
+*.lock.dart
+
+# Android
+android/.gradle
+android/local.properties
+android/key.properties
+*.jks
+
+# iOS
+ios/.symlinks
+ios/Flutter/.last_build_id
+ios/Pods/
+
+# Build
+*.aar
+*.apk
+*.aab
+*.dSYM
+
+# Misc
+.DS_Store
+*.class
+*.log
+*.pyc
+*.swp
+.tmp
+*.tmp
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+
+# Secrets analysis output
+analyze_output*.txt
+test_diag*.txt
+projects.txt
