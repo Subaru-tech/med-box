@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
 import '../core/constants/app_strings.dart';
-import '../providers/auth_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -27,27 +25,25 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.6, curve: Curves.easeIn)),
+      CurvedAnimation(
+          parent: _controller,
+          curve: const Interval(0.0, 0.6, curve: Curves.easeIn)),
     );
 
     _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack)),
+      CurvedAnimation(
+          parent: _controller,
+          curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack)),
     );
 
     _controller.forward();
-    _checkAuth();
+    _goToDashboard();
   }
 
-  Future<void> _checkAuth() async {
+  Future<void> _goToDashboard() async {
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
-
-    final authProvider = context.read<AuthProvider>();
-    if (authProvider.status == AuthStatus.authenticated) {
-      Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
-    } else {
-      Navigator.pushReplacementNamed(context, AppRoutes.login);
-    }
+    Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
   }
 
   @override
@@ -76,22 +72,22 @@ class _SplashScreenState extends State<SplashScreen>
               child: FadeTransition(
                 opacity: _fadeAnimation,
                 child: Container(
-                  width: 100,
-                  height: 100,
+                  width: 110,
+                  height: 110,
                   decoration: BoxDecoration(
                     gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(28),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primary.withAlpha(77), // 0.3 * 255
+                        color: AppColors.primary.withAlpha(77),
                         blurRadius: 30,
                         spreadRadius: 5,
                       ),
                     ],
                   ),
                   child: const Icon(
-                    Icons.developer_board,
-                    size: 50,
+                    Icons.favorite_rounded,
+                    size: 55,
                     color: Colors.white,
                   ),
                 ),
@@ -106,7 +102,7 @@ class _SplashScreenState extends State<SplashScreen>
                     AppStrings.appName,
                     style: TextStyle(
                       color: AppColors.textPrimary,
-                      fontSize: 28,
+                      fontSize: 32,
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.5,
                     ),
@@ -116,8 +112,17 @@ class _SplashScreenState extends State<SplashScreen>
                     AppStrings.appTagline,
                     style: TextStyle(
                       color: AppColors.textSecondary,
-                      fontSize: 16,
+                      fontSize: 15,
                       letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    AppStrings.appPitch,
+                    style: TextStyle(
+                      color: AppColors.textHint,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
                 ],

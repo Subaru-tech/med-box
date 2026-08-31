@@ -39,22 +39,32 @@ class Validators {
     return null;
   }
 
-  static String? validateNoticeTitle(String? value) {
+  static String? validateMedicineName(String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Title is required';
+      return 'Medicine name is required';
     }
     if (value.length > 50) {
-      return 'Title must be less than 50 characters';
+      return 'Name must be less than 50 characters';
     }
     return null;
   }
 
-  static String? validateNoticeMessage(String? value) {
+  static String? validateMessage(String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Message is required';
+      return 'Message cannot be empty';
     }
-    if (value.length > 200) {
-      return 'Message must be less than 200 characters';
+    if (value.length > 300) {
+      return 'Message must be less than 300 characters';
+    }
+    return null;
+  }
+
+  static String? validateAppointmentTitle(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Appointment title is required';
+    }
+    if (value.length > 100) {
+      return 'Title must be less than 100 characters';
     }
     return null;
   }

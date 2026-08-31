@@ -3,44 +3,33 @@ import 'package:http/http.dart' as http;
 import 'dart:developer' as developer;
 
 class NetworkService {
-  /// Sends a notice to the ESP32 via its local IP address
-  /// Supports animation type and optional scheduling
-  Future<bool> sendNoticeToDevice({
+  /// Sends a message to the ElderLink device via its local IP address
+  Future<bool> sendMessageToDevice({
     required String ipAddress,
-    required String title,
-    required String message,
-    DateTime? scheduledAt,
+    required String text,
+    required String senderName,
   }) async {
     try {
-      final url = Uri.parse('http://$ipAddress/update-notice');
-      
+      final url = Uri.parse('http://$ipAddress/send-message');
+
       final body = <String, dynamic>{
-        'title': title,
-        'message': message,
+        'text': text,
+        'sender': senderName,
       };
 
-      // Add scheduling fields if scheduled
-      if (scheduledAt != null) {
-        body['year'] = scheduledAt.year;
-        body['month'] = scheduledAt.month;
-        body['day'] = scheduledAt.day;
-        body['hour'] = scheduledAt.hour;
-        body['minute'] = scheduledAt.minute;
-      }
-
-      final response = await http.post(
+      final response = await http
+          .post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 5));
+      )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        final status = result['status'] ?? 'unknown';
-        developer.log('Notice sent to $ipAddress — status: $status');
+        developer.log('Message sent to $ipAddress');
         return true;
       } else {
-        developer.log('Failed to send notice. Status: ${response.statusCode}');
+        developer.log('Failed to send message. Status: ${response.statusCode}');
         return false;
       }
     } catch (e) {
@@ -49,79 +38,100 @@ class NetworkService {
     }
   }
 
+  /// Sends a medication reminder to the ElderLink device
+  Future<bool> sendMedicationReminder({
+    required String ipAddress,
+    required String medicineName,
+    required String slot,
+    required int hour,
+    required int minute,
+  }) async {
+    try {
+      final url = Uri.parse('http://$ipAddress/set-medication');
+
+      final body = <String, dynamic>{
+        'name': medicineName,
+        'slot': slot,
+        'hour': hour,
+        'minute': minute,
+      };
+
+      final response = await http
+          .post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      )
+          .timeout(const Duration(seconds: 5));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      developer.log('Error sending medication to $ipAddress: $e');
+      return false;
+    }
+  }
+
+  /// Sends an appointment reminder to the ElderLink device
+  Future<bool> sendAppointmentReminder({
+    required String ipAddress,
+    required String title,
+    required DateTime dateTime,
+    String? notes,
+  }) async {
+    try {
+      final url = Uri.parse('http://$ipAddress/set-appointment');
+
+      final body = <String, dynamic>{
+        'title': title,
+        'year': dateTime.year,
+        'month': dateTime.month,
+        'day': dateTime.day,
+        'hour': dateTime.hour,
+        'minute': dateTime.minute,
+        'notes': notes,
+      };
+
+      final response = await http
+          .post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      )
+          .timeout(const Duration(seconds: 5));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      developer.log('Error sending appointment to $ipAddress: $e');
+      return false;
+    }
+  }
+
   /// Checks if the device is reachable on the local network
   Future<bool> pingDevice(String ipAddress) async {
     try {
       final url = Uri.parse('http://$ipAddress/ping');
-      final response = await http.get(url).timeout(const Duration(seconds: 2));
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 2));
       return response.statusCode == 200;
     } catch (e) {
       return false;
     }
   }
 
-  /// Gets the current time and timezone from the ESP32
-  Future<Map<String, dynamic>?> getDeviceTime(String ipAddress) async {
+  /// Gets device status (temperature, humidity, etc.)
+  Future<Map<String, dynamic>?> getDeviceStatus(String ipAddress) async {
     try {
-      final url = Uri.parse('http://$ipAddress/get-time');
-      final response = await http.get(url).timeout(const Duration(seconds: 3));
+      final url = Uri.parse('http://$ipAddress/status');
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
       return null;
     } catch (e) {
-      developer.log('Error getting device time from $ipAddress: $e');
+      developer.log('Error getting status from $ipAddress: $e');
       return null;
-    }
-  }
-
-  /// Sets the timezone on the ESP32 device
-  Future<bool> setDeviceTimezone({
-    required String ipAddress,
-    required int gmtOffsetSec,
-    int dstOffsetSec = 0,
-    bool dstEnabled = false,
-    required String name,
-  }) async {
-    try {
-      final url = Uri.parse('http://$ipAddress/set-timezone');
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'gmt_offset': gmtOffsetSec,
-          'dst_offset': dstOffsetSec,
-          'dst_enabled': dstEnabled,
-          'name': name,
-        }),
-      ).timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        developer.log('Timezone set to $name on $ipAddress');
-        return true;
-      }
-      return false;
-    } catch (e) {
-      developer.log('Error setting timezone on $ipAddress: $e');
-      return false;
-    }
-  }
-
-  /// Lists all notices stored on the ESP32
-  Future<List<Map<String, dynamic>>> listDeviceNotices(String ipAddress) async {
-    try {
-      final url = Uri.parse('http://$ipAddress/list-notices');
-      final response = await http.get(url).timeout(const Duration(seconds: 3));
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.cast<Map<String, dynamic>>();
-      }
-      return [];
-    } catch (e) {
-      developer.log('Error listing notices from $ipAddress: $e');
-      return [];
     }
   }
 }

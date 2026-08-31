@@ -2,11 +2,14 @@ class AppRoutes {
   AppRoutes._();
 
   static const String splash = '/';
-  static const String login = '/login';
-  static const String signup = '/signup';
   static const String dashboard = '/dashboard';
-  static const String createNotice = '/create-notice';
-  static const String noticeHistory = '/notice-history';
-  static const String deviceManagement = '/device-management';
+  static const String medications = '/medications';
+  static const String medicationDetail = '/medication-detail';
+  static const String messages = '/messages';
+  static const String sendMessage = '/send-message';
+  static const String appointments = '/appointments';
+  static const String addAppointment = '/add-appointment';
+  static const String alerts = '/alerts';
+  static const String elderDevice = '/elder-device';
   static const String settings = '/settings';
 }

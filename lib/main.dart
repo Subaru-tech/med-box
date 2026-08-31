@@ -4,22 +4,22 @@ import 'package:provider/provider.dart';
 import 'core/constants/app_routes.dart';
 import 'core/constants/app_strings.dart';
 import 'core/theme/app_theme.dart';
-import 'providers/auth_provider.dart';
-import 'providers/notice_provider.dart';
 import 'providers/device_provider.dart';
+import 'providers/medication_provider.dart';
+import 'providers/message_provider.dart';
+import 'providers/appointment_provider.dart';
+import 'providers/alert_provider.dart';
 import 'routes.dart';
 import 'services/firebase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Lock orientation to portrait
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
@@ -27,22 +27,23 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
-  // Initialize Firebase
   await FirebaseService.initialize();
 
-  runApp(const SmartNoticeBoardApp());
+  runApp(const ElderLinkApp());
 }
 
-class SmartNoticeBoardApp extends StatelessWidget {
-  const SmartNoticeBoardApp({super.key});
+class ElderLinkApp extends StatelessWidget {
+  const ElderLinkApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => NoticeProvider()),
         ChangeNotifierProvider(create: (_) => DeviceProvider()),
+        ChangeNotifierProvider(create: (_) => MedicationProvider()),
+        ChangeNotifierProvider(create: (_) => MessageProvider()),
+        ChangeNotifierProvider(create: (_) => AppointmentProvider()),
+        ChangeNotifierProvider(create: (_) => AlertProvider()),
       ],
       child: MaterialApp(
         title: AppStrings.appName,

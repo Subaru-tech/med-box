@@ -15,6 +15,15 @@ class DeviceProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get selectedDeviceId => _selectedDeviceId;
 
+  Device? get selectedDevice {
+    if (_selectedDeviceId == null) return null;
+    try {
+      return _devices.firstWhere((d) => d.id == _selectedDeviceId);
+    } catch (_) {
+      return null;
+    }
+  }
+
   DeviceProvider() {
     _init();
   }
@@ -25,8 +34,6 @@ class DeviceProvider with ChangeNotifier {
       _devices = data;
       _isLoading = false;
       notifyListeners();
-      
-      // Check offline devices if they are actually online locally
       _checkLocalDevices();
     });
   }
@@ -71,7 +78,6 @@ class DeviceProvider with ChangeNotifier {
     });
   }
 
-  /// Manually trigger a check for all local devices
   Future<void> refreshStatuses() async {
     _checkLocalDevices();
   }

@@ -6,6 +6,9 @@ class Device {
   final String location;
   final bool isOnline;
   final DateTime lastSeen;
+  final double? temperature;
+  final double? humidity;
+  final bool? motionDetected;
   final String? fcmToken;
   final String? ipAddress;
 
@@ -15,6 +18,9 @@ class Device {
     required this.location,
     this.isOnline = false,
     required this.lastSeen,
+    this.temperature,
+    this.humidity,
+    this.motionDetected,
     this.fcmToken,
     this.ipAddress,
   });
@@ -26,6 +32,9 @@ class Device {
       location: json['location'] ?? '',
       isOnline: json['isOnline'] ?? false,
       lastSeen: (json['lastSeen'] as Timestamp).toDate(),
+      temperature: (json['temperature'] as num?)?.toDouble(),
+      humidity: (json['humidity'] as num?)?.toDouble(),
+      motionDetected: json['motionDetected'],
       fcmToken: json['fcmToken'],
       ipAddress: json['ipAddress'],
     );
@@ -37,6 +46,9 @@ class Device {
       'location': location,
       'isOnline': isOnline,
       'lastSeen': Timestamp.fromDate(lastSeen),
+      'temperature': temperature,
+      'humidity': humidity,
+      'motionDetected': motionDetected,
       'fcmToken': fcmToken,
       'ipAddress': ipAddress,
     };
@@ -47,6 +59,9 @@ class Device {
     String? location,
     bool? isOnline,
     DateTime? lastSeen,
+    double? temperature,
+    double? humidity,
+    bool? motionDetected,
     String? fcmToken,
     String? ipAddress,
   }) {
@@ -56,6 +71,9 @@ class Device {
       location: location ?? this.location,
       isOnline: isOnline ?? this.isOnline,
       lastSeen: lastSeen ?? this.lastSeen,
+      temperature: temperature ?? this.temperature,
+      humidity: humidity ?? this.humidity,
+      motionDetected: motionDetected ?? this.motionDetected,
       fcmToken: fcmToken ?? this.fcmToken,
       ipAddress: ipAddress ?? this.ipAddress,
     );

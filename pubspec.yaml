@@ -1,5 +1,5 @@
-name: smart_notice_board
-description: Smart Digital Notice Board - IoT Notice Board System with Flutter + Firebase + ESP32
+name: elderlink
+description: ElderLink — Connected Elderly Assistance System for Family Caregivers
 
 publish_to: 'none'
 
@@ -28,7 +28,6 @@ dependencies:
   intl: ^0.19.0
 
   # Utils
-  shared_preferences: ^2.3.5
   connectivity_plus: ^6.1.1
   http: ^1.2.1
 

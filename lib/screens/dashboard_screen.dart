@@ -4,12 +4,15 @@ import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
 import '../core/constants/app_strings.dart';
 import '../core/utils/helpers.dart';
-import '../providers/auth_provider.dart';
 import '../providers/device_provider.dart';
-import '../providers/notice_provider.dart';
+import '../providers/medication_provider.dart';
+import '../providers/message_provider.dart';
+import '../providers/appointment_provider.dart';
+import '../providers/alert_provider.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/glass_container.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -21,19 +24,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final authProvider = context.read<AuthProvider>();
-      if (authProvider.user != null) {
-        context.read<NoticeProvider>().listenToUserNotices(authProvider.user!.uid);
-      }
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
     final deviceProvider = context.watch<DeviceProvider>();
-    final noticeProvider = context.watch<NoticeProvider>();
+    final medicationProvider = context.watch<MedicationProvider>();
+    final messageProvider = context.watch<MessageProvider>();
+    final appointmentProvider = context.watch<AppointmentProvider>();
+    final alertProvider = context.watch<AlertProvider>();
+
+    final device = deviceProvider.selectedDevice;
+    final greeting = Helpers.getGreeting();
+    final emoji = Helpers.getGreetingEmoji();
 
     return Scaffold(
       appBar: AppBar(
@@ -48,139 +51,331 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: AmbientBackground(
         child: RefreshIndicator(
           onRefresh: () async {
-          // Refresh data logic
-        },
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Greeting
-              Text(
-                '${Helpers.getGreeting()},',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 16),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                authProvider.user?.name ?? 'User',
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
+            await deviceProvider.refreshStatuses();
+          },
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Greeting
+                Text(
+                  '$emoji $greeting,',
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 16),
                 ),
-              ),
-              const SizedBox(height: 24),
-
-              // Device Status Summary
-              GlassContainer(
-                padding: const EdgeInsets.all(20),
-                backgroundColor: AppColors.primary.withAlpha(26),
-                borderColor: AppColors.primary,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Display Status',
-                            style: TextStyle(color: Colors.white, fontSize: 14),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${deviceProvider.onlineDevices.length} Devices Online',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    StatusBadge(
-                      isOnline: deviceProvider.onlineDevices.isNotEmpty,
-                      size: 12,
-                      showGlow: false,
-                    ),
-                  ],
+                const SizedBox(height: 4),
+                const Text(
+                  'Welcome to ElderLink',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 32),
-
-              // Quick Actions
-              const Text(
-                'Quick Actions',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 8),
+                Text(
+                  AppStrings.appPitch,
+                  style: TextStyle(
+                    color: AppColors.textHint,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  _ActionCard(
-                    title: 'Create\nNotice',
-                    icon: Icons.add_to_photos_outlined,
-                    color: AppColors.primary,
-                    onTap: () => Navigator.pushNamed(context, AppRoutes.createNotice),
-                  ),
-                  const SizedBox(width: 16),
-                  _ActionCard(
-                    title: 'Manage\nDevices',
-                    icon: Icons.devices_outlined,
-                    color: AppColors.accent,
-                    onTap: () => Navigator.pushNamed(context, AppRoutes.deviceManagement),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
-              // Recent notice
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Recent Notice',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pushNamed(context, AppRoutes.noticeHistory),
-                    child: const Text('View All'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (noticeProvider.notices.isEmpty)
+                // Device Status Card
                 GlassContainer(
-                  padding: const EdgeInsets.all(24),
-                  width: double.infinity,
-                  child: const Column(
+                  padding: const EdgeInsets.all(20),
+                  backgroundColor: AppColors.primary.withAlpha(26),
+                  borderColor: AppColors.primary,
+                  child: Row(
                     children: [
-                      Icon(Icons.history, size: 40, color: AppColors.textHint),
-                      SizedBox(height: 12),
-                      Text(
-                        'No notices yet',
-                        style: TextStyle(color: AppColors.textSecondary),
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withAlpha(51),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.favorite_rounded,
+                          color: AppColors.primary,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              device?.name ?? 'No Device',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              device != null
+                                  ? '${device.location} • ${device.isOnline ? "Online" : "Offline"}'
+                                  : 'Register a device to get started',
+                              style: TextStyle(
+                                color: Colors.white.withAlpha(179),
+                                fontSize: 13,
+                              ),
+                            ),
+                            if (device?.temperature != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                '🌡️ ${device!.temperature!.toStringAsFixed(1)}°C',
+                                style: TextStyle(
+                                  color: Colors.white.withAlpha(179),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      StatusBadge(
+                        isOnline: device?.isOnline ?? false,
+                        size: 12,
+                        showGlow: false,
                       ),
                     ],
                   ),
-                )
-              else
-                _RecentNoticeCard(notice: noticeProvider.notices.first),
-            ],
+                ),
+                const SizedBox(height: 28),
+
+                // Quick Actions
+                const Text(
+                  'Quick Actions',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    _ActionCard(
+                      title: '💊\nMedicines',
+                      color: AppColors.medication,
+                      onTap: () =>
+                          Navigator.pushNamed(context, AppRoutes.medications),
+                    ),
+                    const SizedBox(width: 12),
+                    _ActionCard(
+                      title: '💬\nMessages',
+                      color: AppColors.message,
+                      onTap: () =>
+                          Navigator.pushNamed(context, AppRoutes.messages),
+                    ),
+                    const SizedBox(width: 12),
+                    _ActionCard(
+                      title: '📅\nAppointments',
+                      color: AppColors.appointment,
+                      onTap: () => Navigator.pushNamed(
+                          context, AppRoutes.appointments),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
+
+                // Status Summary Cards
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatusCard(
+                        label: '💊 Medicines',
+                        value:
+                            '${medicationProvider.medications.length} scheduled',
+                        color: AppColors.medication,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatusCard(
+                        label: '💬 Messages',
+                        value:
+                            '${messageProvider.pendingMessages} pending',
+                        color: AppColors.message,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatusCard(
+                        label: '📅 Appointments',
+                        value:
+                            '${appointmentProvider.upcomingAppointments.length} upcoming',
+                        color: AppColors.appointment,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatusCard(
+                        label: '🚨 Alerts',
+                        value:
+                            '${alertProvider.activeAlerts.length} active',
+                        color: AppColors.sosAlert,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
+
+                // Active Alerts
+                if (alertProvider.activeAlerts.isNotEmpty) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '🚨 Active Alerts',
+                        style: TextStyle(
+                          color: AppColors.error,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.pushNamed(context, AppRoutes.alerts),
+                        child: const Text('View All'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ...alertProvider.activeAlerts.take(3).map(
+                        (alert) => GlassContainer(
+                          padding: const EdgeInsets.all(16),
+                          borderColor: AppColors.error.withAlpha(77),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.warning_amber_rounded,
+                                  color: AppColors.error, size: 24),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      alert.typeLabel,
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${alert.deviceName} • ${Helpers.formatDateTime(alert.timestamp)}',
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  const SizedBox(height: 12),
+                ],
+
+                // Medicine Status
+                if (medicationProvider.medications.isNotEmpty) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '💊 Medicine Status',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.pushNamed(context, AppRoutes.medications),
+                        child: const Text('View All'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ...medicationProvider.medications.take(3).map(
+                        (med) => GlassContainer(
+                          padding: const EdgeInsets.all(16),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color:
+                                      AppColors.medication.withAlpha(26),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.medication,
+                                  color: AppColors.medication,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      med.name,
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${med.completedDoses}/${med.totalDoses} doses taken today',
+                                      style: TextStyle(
+                                        color: med.completedDoses ==
+                                                med.totalDoses
+                                            ? AppColors.success
+                                            : AppColors.textSecondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (med.completedDoses == med.totalDoses)
+                                const Icon(Icons.check_circle,
+                                    color: AppColors.success, size: 20)
+                              else
+                                const Icon(Icons.hourglass_bottom,
+                                    color: AppColors.warning, size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                ],
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
-      ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.pushNamed(context, AppRoutes.createNotice),
-        child: const Icon(Icons.add),
       ),
     );
   }
@@ -188,13 +383,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 class _ActionCard extends StatelessWidget {
   final String title;
-  final IconData icon;
   final Color color;
   final VoidCallback onTap;
 
   const _ActionCard({
     required this.title,
-    required this.icon,
     required this.color,
     required this.onTap,
   });
@@ -206,25 +399,17 @@ class _ActionCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: GlassContainer(
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withAlpha(26), // 0.1 * 255
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: color),
-              ),
-              const SizedBox(height: 16),
               Text(
                 title,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.textPrimary,
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
+                  height: 1.4,
                 ),
               ),
             ],
@@ -235,59 +420,41 @@ class _ActionCard extends StatelessWidget {
   }
 }
 
-class _RecentNoticeCard extends StatelessWidget {
-  final dynamic notice;
+class _StatusCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
 
-  const _RecentNoticeCard({required this.notice});
+  const _StatusCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GlassContainer(
       padding: const EdgeInsets.all(16),
+      borderColor: color.withAlpha(51),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                notice.title,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              StatusChip(
-                label: notice.isSent ? 'Live' : 'Queued',
-                color: notice.isSent ? AppColors.online : AppColors.warning,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
           Text(
-            notice.message,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.devices, size: 14, color: AppColors.textHint),
-              const SizedBox(width: 4),
-              Text(
-                notice.deviceName,
-                style: const TextStyle(color: AppColors.textHint, fontSize: 12),
-              ),
-              const Spacer(),
-              const Icon(Icons.access_time, size: 14, color: AppColors.textHint),
-              const SizedBox(width: 4),
-              Text(
-                Helpers.formatDateTime(notice.createdAt),
-                style: const TextStyle(color: AppColors.textHint, fontSize: 12),
-              ),
-            ],
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

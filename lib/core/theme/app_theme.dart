@@ -112,8 +112,8 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: Colors.black, // Dark text on bright neon cyan for contrast
-          shadowColor: AppColors.primary.withAlpha(128), // Neon glow
+          foregroundColor: Colors.white,
+          shadowColor: AppColors.primary.withAlpha(128),
           elevation: 8,
           minimumSize: const Size(double.infinity, 48),
           shape: RoundedRectangleBorder(
@@ -141,7 +141,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0x0AFFFFFF), // Darker translucent fill for inputs
+        fillColor: const Color(0x0AFFFFFF),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -172,7 +172,7 @@ class AppTheme {
         thickness: 1,
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: Colors.transparent, // Let glass or black background show
+        backgroundColor: Colors.transparent,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.textSecondary,
         type: BottomNavigationBarType.fixed,
@@ -203,7 +203,7 @@ class AppTheme {
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: AppColors.primary,
-        foregroundColor: Colors.black,
+        foregroundColor: Colors.white,
         elevation: 8,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
