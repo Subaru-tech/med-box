@@ -4,6 +4,8 @@ import '../core/utils/helpers.dart';
 import '../models/device_model.dart';
 import 'status_badge.dart';
 import 'glass_container.dart';
+import 'icon_badge.dart';
+
 class DeviceTile extends StatelessWidget {
   final Device device;
   final VoidCallback? onEdit;
@@ -22,17 +24,10 @@ class DeviceTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: (device.isOnline ? AppColors.online : AppColors.offline).withAlpha(26),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            Icons.developer_board,
-            color: device.isOnline ? AppColors.online : AppColors.offline,
-          ),
+        leading: IconBadge(
+          icon: Icons.developer_board,
+          color: device.isOnline ? AppColors.online : AppColors.offline,
+          size: 48,
         ),
         title: Row(
           children: [

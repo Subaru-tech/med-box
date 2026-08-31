@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
 import '../core/constants/app_strings.dart';
+import '../core/theme/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -43,7 +44,7 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _goToDashboard() async {
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
-    Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
+    Navigator.pushReplacementNamed(context, AppRoutes.home);
   }
 
   @override
@@ -79,9 +80,9 @@ class _SplashScreenState extends State<SplashScreen>
                     borderRadius: BorderRadius.circular(28),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primary.withAlpha(77),
-                        blurRadius: 30,
-                        spreadRadius: 5,
+                        color: AppColors.primary.withAlpha(50),
+                        blurRadius: 24,
+                        spreadRadius: 0,
                       ),
                     ],
                   ),
@@ -98,14 +99,9 @@ class _SplashScreenState extends State<SplashScreen>
               opacity: _fadeAnimation,
               child: Column(
                 children: [
-                  const Text(
+                  Text(
                     AppStrings.appName,
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.5,
-                    ),
+                    style: AppTheme.display(fontSize: 36, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
                   Text(

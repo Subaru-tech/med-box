@@ -1,4 +1,0 @@
-﻿Analyzing Digital board...                                      
-
-  error - The named parameter 'onPressed' isn't defined - lib\widgets\common\custom_button.dart:85:11 - undefined_named_parameter
-

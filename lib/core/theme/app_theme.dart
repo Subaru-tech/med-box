@@ -5,6 +5,23 @@ import '../constants/app_colors.dart';
 class AppTheme {
   AppTheme._();
 
+  /// ElderLink's signature display voice — a warm serif reserved for
+  /// hero text, page titles and dialog headers. Body/UI chrome stays on
+  /// Inter for legibility; this is what gives the app its own identity.
+  static TextStyle display({
+    double fontSize = 20,
+    FontWeight fontWeight = FontWeight.w600,
+    Color color = AppColors.textPrimary,
+    double? letterSpacing,
+  }) {
+    return GoogleFonts.fraunces(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+      letterSpacing: letterSpacing,
+    );
+  }
+
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
@@ -93,11 +110,7 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.inter(
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-        ),
+        titleTextStyle: display(fontSize: 21, fontWeight: FontWeight.w600),
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
       ),
       cardTheme: CardThemeData(
@@ -113,15 +126,15 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
-          shadowColor: AppColors.primary.withAlpha(128),
-          elevation: 8,
+          shadowColor: AppColors.primary.withAlpha(60),
+          elevation: 2,
           minimumSize: const Size(double.infinity, 48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
           textStyle: GoogleFonts.inter(
             fontSize: 16,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
@@ -195,16 +208,12 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           side: const BorderSide(color: AppColors.border),
         ),
-        titleTextStyle: GoogleFonts.inter(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-        ),
+        titleTextStyle: display(fontSize: 19, fontWeight: FontWeight.w600),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        elevation: 8,
+        elevation: 3,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );

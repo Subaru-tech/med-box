@@ -2,6 +2,7 @@ class AppRoutes {
   AppRoutes._();
 
   static const String splash = '/';
+  static const String home = '/home';
   static const String dashboard = '/dashboard';
   static const String medications = '/medications';
   static const String medicationDetail = '/medication-detail';

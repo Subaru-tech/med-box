@@ -176,7 +176,7 @@ class _MessageBubble extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '💌 From: ${message.senderName}',
+                  'From: ${message.senderName}',
                   style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 12,
@@ -198,17 +198,30 @@ class _MessageBubble extends StatelessWidget {
                           .withAlpha(77),
                     ),
                   ),
-                  child: Text(
-                    message.acknowledged
-                        ? '✓ Acknowledged'
-                        : '⏳ Pending',
-                    style: TextStyle(
-                      color: message.acknowledged
-                          ? AppColors.success
-                          : AppColors.warning,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        message.acknowledged
+                            ? Icons.check_circle
+                            : Icons.hourglass_bottom,
+                        size: 12,
+                        color: message.acknowledged
+                            ? AppColors.success
+                            : AppColors.warning,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        message.acknowledged ? 'Acknowledged' : 'Pending',
+                        style: TextStyle(
+                          color: message.acknowledged
+                              ? AppColors.success
+                              : AppColors.warning,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.noticeboard" "\0"
-            VALUE "FileDescription", "smart_notice_board" "\0"
+            VALUE "FileDescription", "ElderLink" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "smart_notice_board" "\0"
+            VALUE "InternalName", "ElderLink" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.noticeboard. All rights reserved." "\0"
-            VALUE "OriginalFilename", "smart_notice_board.exe" "\0"
-            VALUE "ProductName", "smart_notice_board" "\0"
+            VALUE "OriginalFilename", "ElderLink.exe" "\0"
+            VALUE "ProductName", "ElderLink" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

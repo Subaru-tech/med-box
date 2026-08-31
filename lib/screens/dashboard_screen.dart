@@ -3,15 +3,18 @@ import 'package:provider/provider.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
 import '../core/constants/app_strings.dart';
+import '../core/theme/app_theme.dart';
 import '../core/utils/helpers.dart';
 import '../providers/device_provider.dart';
 import '../providers/medication_provider.dart';
 import '../providers/message_provider.dart';
 import '../providers/appointment_provider.dart';
 import '../providers/alert_provider.dart';
+import '../providers/shell_nav_provider.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/glass_container.dart';
+import '../widgets/icon_badge.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -65,22 +68,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: AppColors.textSecondary, fontSize: 16),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Welcome to ElderLink',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
                 Text(
-                  AppStrings.appPitch,
-                  style: TextStyle(
-                    color: AppColors.textHint,
-                    fontSize: 12,
-                    fontStyle: FontStyle.italic,
-                  ),
+                  'Welcome to ElderLink',
+                  style: AppTheme.display(fontSize: 26, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 24),
 
@@ -91,18 +81,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   borderColor: AppColors.primary,
                   child: Row(
                     children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withAlpha(51),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.favorite_rounded,
-                          color: AppColors.primary,
-                          size: 24,
-                        ),
+                      const IconBadge(
+                        icon: Icons.favorite_rounded,
+                        color: AppColors.primary,
+                        size: 48,
+                        iconSize: 24,
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -129,12 +112,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             if (device?.temperature != null) ...[
                               const SizedBox(height: 4),
-                              Text(
-                                '🌡️ ${device!.temperature!.toStringAsFixed(1)}°C',
-                                style: TextStyle(
-                                  color: Colors.white.withAlpha(179),
-                                  fontSize: 12,
-                                ),
+                              Row(
+                                children: [
+                                  Icon(Icons.thermostat_outlined,
+                                      size: 13,
+                                      color: Colors.white.withAlpha(179)),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${device!.temperature!.toStringAsFixed(1)}°C',
+                                    style: TextStyle(
+                                      color: Colors.white.withAlpha(179),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ],
@@ -163,24 +154,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Row(
                   children: [
                     _ActionCard(
-                      title: '💊\nMedicines',
+                      icon: Icons.medication_outlined,
+                      title: 'Medicines',
                       color: AppColors.medication,
                       onTap: () =>
-                          Navigator.pushNamed(context, AppRoutes.medications),
+                          context.read<ShellNavProvider>().setIndex(1),
                     ),
                     const SizedBox(width: 12),
                     _ActionCard(
-                      title: '💬\nMessages',
+                      icon: Icons.chat_bubble_outline,
+                      title: 'Messages',
                       color: AppColors.message,
                       onTap: () =>
-                          Navigator.pushNamed(context, AppRoutes.messages),
+                          context.read<ShellNavProvider>().setIndex(2),
                     ),
                     const SizedBox(width: 12),
                     _ActionCard(
-                      title: '📅\nAppointments',
+                      icon: Icons.event_outlined,
+                      title: 'Appointments',
                       color: AppColors.appointment,
-                      onTap: () => Navigator.pushNamed(
-                          context, AppRoutes.appointments),
+                      onTap: () =>
+                          context.read<ShellNavProvider>().setIndex(3),
                     ),
                   ],
                 ),
@@ -191,7 +185,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     Expanded(
                       child: _StatusCard(
-                        label: '💊 Medicines',
+                        icon: Icons.medication_outlined,
+                        label: 'Medicines',
                         value:
                             '${medicationProvider.medications.length} scheduled',
                         color: AppColors.medication,
@@ -200,7 +195,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _StatusCard(
-                        label: '💬 Messages',
+                        icon: Icons.chat_bubble_outline,
+                        label: 'Messages',
                         value:
                             '${messageProvider.pendingMessages} pending',
                         color: AppColors.message,
@@ -213,7 +209,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     Expanded(
                       child: _StatusCard(
-                        label: '📅 Appointments',
+                        icon: Icons.event_outlined,
+                        label: 'Appointments',
                         value:
                             '${appointmentProvider.upcomingAppointments.length} upcoming',
                         color: AppColors.appointment,
@@ -222,7 +219,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _StatusCard(
-                        label: '🚨 Alerts',
+                        icon: Icons.warning_amber_rounded,
+                        label: 'Alerts',
                         value:
                             '${alertProvider.activeAlerts.length} active',
                         color: AppColors.sosAlert,
@@ -237,17 +235,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        '🚨 Active Alerts',
-                        style: TextStyle(
-                          color: AppColors.error,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: AppColors.error, size: 18),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Active Alerts',
+                            style: TextStyle(
+                              color: AppColors.error,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                       TextButton(
                         onPressed: () =>
-                            Navigator.pushNamed(context, AppRoutes.alerts),
+                            context.read<ShellNavProvider>().setIndex(4),
                         child: const Text('View All'),
                       ),
                     ],
@@ -297,17 +302,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        '💊 Medicine Status',
-                        style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: [
+                          const Icon(Icons.medication_outlined,
+                              color: AppColors.textPrimary, size: 18),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Medicine Status',
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                       TextButton(
                         onPressed: () =>
-                            Navigator.pushNamed(context, AppRoutes.medications),
+                            context.read<ShellNavProvider>().setIndex(1),
                         child: const Text('View All'),
                       ),
                     ],
@@ -319,19 +331,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           margin: const EdgeInsets.only(bottom: 8),
                           child: Row(
                             children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color:
-                                      AppColors.medication.withAlpha(26),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(
-                                  Icons.medication,
-                                  color: AppColors.medication,
-                                  size: 20,
-                                ),
+                              const IconBadge(
+                                icon: Icons.medication,
+                                color: AppColors.medication,
+                                size: 40,
+                                iconSize: 20,
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -382,11 +386,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 class _ActionCard extends StatelessWidget {
+  final IconData icon;
   final String title;
   final Color color;
   final VoidCallback onTap;
 
   const _ActionCard({
+    required this.icon,
     required this.title,
     required this.color,
     required this.onTap,
@@ -399,17 +405,19 @@ class _ActionCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: GlassContainer(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
           child: Column(
             children: [
+              IconBadge(icon: icon, color: color, size: 40, iconSize: 20),
+              const SizedBox(height: 10),
               Text(
                 title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.textPrimary,
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  height: 1.4,
+                  height: 1.2,
                 ),
               ),
             ],
@@ -421,11 +429,13 @@ class _ActionCard extends StatelessWidget {
 }
 
 class _StatusCard extends StatelessWidget {
+  final IconData icon;
   final String label;
   final String value;
   final Color color;
 
   const _StatusCard({
+    required this.icon,
     required this.label,
     required this.value,
     required this.color,
@@ -439,13 +449,19 @@ class _StatusCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
+          Row(
+            children: [
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           Text(

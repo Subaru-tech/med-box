@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_strings.dart';
+import '../core/theme/app_theme.dart';
 import '../core/utils/helpers.dart';
 import '../core/utils/validators.dart';
 import '../models/medication_model.dart';
@@ -11,6 +12,7 @@ import '../widgets/common/custom_button.dart';
 import '../widgets/common/custom_textfield.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/glass_container.dart';
+import '../widgets/icon_badge.dart';
 
 class MedicationsScreen extends StatelessWidget {
   const MedicationsScreen({super.key});
@@ -96,13 +98,9 @@ class MedicationsScreen extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Add Medicine',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: AppTheme.display(fontSize: 21, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 24),
                   CustomTextField(
@@ -114,21 +112,24 @@ class MedicationsScreen extends StatelessWidget {
                   const SizedBox(height: 20),
 
                   _TimeSlotRow(
-                    label: '🌅 Morning',
+                    icon: Icons.wb_twilight,
+                    label: 'Morning',
                     time: morning,
                     onTimeChanged: (t) =>
                         setSheetState(() => morning = t),
                   ),
                   const SizedBox(height: 12),
                   _TimeSlotRow(
-                    label: '☀️ Afternoon',
+                    icon: Icons.wb_sunny_outlined,
+                    label: 'Afternoon',
                     time: afternoon,
                     onTimeChanged: (t) =>
                         setSheetState(() => afternoon = t),
                   ),
                   const SizedBox(height: 12),
                   _TimeSlotRow(
-                    label: '🌙 Night',
+                    icon: Icons.nightlight_outlined,
+                    label: 'Night',
                     time: night,
                     onTimeChanged: (t) =>
                         setSheetState(() => night = t),
@@ -170,11 +171,13 @@ class MedicationsScreen extends StatelessWidget {
 }
 
 class _TimeSlotRow extends StatelessWidget {
+  final IconData icon;
   final String label;
   final TimeOfDay time;
   final ValueChanged<TimeOfDay> onTimeChanged;
 
   const _TimeSlotRow({
+    required this.icon,
     required this.label,
     required this.time,
     required this.onTimeChanged,
@@ -186,12 +189,18 @@ class _TimeSlotRow extends StatelessWidget {
       children: [
         Expanded(
           flex: 2,
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-            ),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: AppColors.textSecondary),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                ),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -251,18 +260,11 @@ class _MedicationCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.medication.withAlpha(26),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.medication,
-                  color: AppColors.medication,
-                  size: 20,
-                ),
+              const IconBadge(
+                icon: Icons.medication,
+                color: AppColors.medication,
+                size: 40,
+                iconSize: 20,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -294,20 +296,23 @@ class _MedicationCard extends StatelessWidget {
             children: [
               if (medication.morningEnabled)
                 _DoseChip(
-                  label: '🌅 ${_formatTime(medication.morningHour, medication.morningMinute)}',
+                  icon: Icons.wb_twilight,
+                  label: _formatTime(medication.morningHour, medication.morningMinute),
                   taken: medication.morningTaken,
                 ),
               if (medication.afternoonEnabled) ...[
                 const SizedBox(width: 8),
                 _DoseChip(
-                  label: '☀️ ${_formatTime(medication.afternoonHour, medication.afternoonMinute)}',
+                  icon: Icons.wb_sunny_outlined,
+                  label: _formatTime(medication.afternoonHour, medication.afternoonMinute),
                   taken: medication.afternoonTaken,
                 ),
               ],
               if (medication.nightEnabled) ...[
                 const SizedBox(width: 8),
                 _DoseChip(
-                  label: '🌙 ${_formatTime(medication.nightHour, medication.nightMinute)}',
+                  icon: Icons.nightlight_outlined,
+                  label: _formatTime(medication.nightHour, medication.nightMinute),
                   taken: medication.nightTaken,
                 ),
               ],
@@ -325,10 +330,11 @@ class _MedicationCard extends StatelessWidget {
 }
 
 class _DoseChip extends StatelessWidget {
+  final IconData icon;
   final String label;
   final bool taken;
 
-  const _DoseChip({required this.label, required this.taken});
+  const _DoseChip({required this.icon, required this.label, required this.taken});
 
   @override
   Widget build(BuildContext context) {
@@ -343,6 +349,8 @@ class _DoseChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
           Text(
             label,
             style: TextStyle(

@@ -4,10 +4,10 @@ import '../core/constants/app_colors.dart';
 import '../core/constants/app_strings.dart';
 import '../core/utils/helpers.dart';
 import '../models/alert_model.dart';
-import '../providers/device_provider.dart';
 import '../providers/alert_provider.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/glass_container.dart';
+import '../widgets/icon_badge.dart';
 
 class AlertsScreen extends StatelessWidget {
   const AlertsScreen({super.key});
@@ -102,19 +102,11 @@ class _AlertCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: (isSos ? AppColors.sosAlert : AppColors.warning)
-                      .withAlpha(26),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  isSos ? Icons.emergency : Icons.warning_amber_rounded,
-                  color: isSos ? AppColors.sosAlert : AppColors.warning,
-                  size: 22,
-                ),
+              IconBadge(
+                icon: isSos ? Icons.emergency : Icons.warning_amber_rounded,
+                color: isSos ? AppColors.sosAlert : AppColors.warning,
+                size: 44,
+                iconSize: 22,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -152,12 +144,19 @@ class _AlertCard extends StatelessWidget {
                     border:
                         Border.all(color: AppColors.success.withAlpha(77)),
                   ),
-                  child: const Text(
-                    '✓ Seen',
-                    style: TextStyle(
-                      color: AppColors.success,
-                      fontSize: 11,
-                    ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check, size: 12, color: AppColors.success),
+                      SizedBox(width: 3),
+                      Text(
+                        'Seen',
+                        style: TextStyle(
+                          color: AppColors.success,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],

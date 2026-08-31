@@ -1,11 +1,11 @@
 {
-    "name": "smart_notice_board",
-    "short_name": "smart_notice_board",
+    "name": "ElderLink",
+    "short_name": "ElderLink",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0F172A",
+    "theme_color": "#2D9CDB",
+    "description": "ElderLink — Connected Elderly Assistance System for Family Caregivers",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'core/constants/app_routes.dart';
 import 'screens/splash_screen.dart';
+import 'screens/main_shell.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/medications_screen.dart';
 import 'screens/messages_screen.dart';
@@ -16,6 +17,8 @@ class AppRouter {
     switch (settings.name) {
       case AppRoutes.splash:
         return MaterialPageRoute(builder: (_) => const SplashScreen());
+      case AppRoutes.home:
+        return MaterialPageRoute(builder: (_) => const MainShell());
       case AppRoutes.dashboard:
         return MaterialPageRoute(builder: (_) => const DashboardScreen());
       case AppRoutes.medications:

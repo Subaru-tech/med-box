@@ -60,7 +60,7 @@ class MedicationProvider with ChangeNotifier {
         createdAt: DateTime.now(),
       );
 
-      final id = await _repository.addMedication(medication);
+      await _repository.addMedication(medication);
 
       // Push reminders to device
       if (ipAddress != null && ipAddress.isNotEmpty) {

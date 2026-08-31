@@ -1,605 +1,627 @@
 /*
  * ================================================================
- * Smart Digital Notice Board - ESP32 Firmware (COMPLETE)
+ * ElderLink Smart Medicine Box — ESP32 Firmware
  * ================================================================
- * Version: 3.5 (SH1106 + U8G2 + Button + Screensaver + Scheduler 
- *               + Timezone + Buzzer + Animations)
- * Hardware: ESP32 DevKit V1 + SH1106 OLED + Push Button + Buzzer
- * 
- * FEATURES:
- * - WiFi Web Server with JSON API
- * - Button: Short=Next, Long=Clear
- * - Screensaver: Bouncing emojis + clock after 5 sec idle
- * - Scheduler: Optional date/time for notices
- * - Timezone: Configurable GMT offset with DST support
- * - Buzzer: 1-second beep when notice appears
- * - Animations: Slide, fade, typewriter effects for notices
+ * Implements the local HTTP API the ElderLink Flutter app talks to
+ * directly over LAN (see lib/services/network_service.dart):
+ *
+ *   GET  /ping             -> "pong"                  (online check)
+ *   GET  /status           -> JSON device telemetry
+ *   POST /send-message     -> {text, sender}
+ *   POST /set-medication   -> {name, slot, hour, minute}
+ *   POST /set-appointment  -> {title, year, month, day, hour, minute, notes}
+ *
+ * Hardware (no reed switch — dose confirmation is button-only):
+ *   Push button    -> GPIO 26 (external 10k pull-down to GND)
+ *                     short press = confirm/silence, long press (3s+) = SOS
+ *   Active buzzer  -> GPIO 25 (via 220ohm resistor)
+ *   Red LED        -> GPIO 33 (via 220ohm resistor, missed dose)
+ *   Green LED      -> GPIO 32 (via 220ohm resistor, taken / confirmed)
+ *   SSD1306 OLED   -> I2C, GPIO 21 (SDA) / GPIO 22 (SCL), address 0x3C
+ *   DS3231 RTC     -> shares the same I2C bus (optional — falls back to NTP)
+ *
+ * Required Arduino libraries (install via Library Manager):
+ *   - ArduinoJson (Benoit Blanchon) — version 7.x
+ *   - Adafruit SSD1306
+ *   - Adafruit GFX Library
+ *   - RTClib (Adafruit) + Adafruit BusIO   [optional — see USE_RTC below]
+ *
+ * Board: any ESP32 dev board (e.g. "ESP32 Dev Module") via the
+ * espressif/arduino-esp32 board package.
+ *
+ * SETUP:
+ *   1. Fill in WIFI_PASSWORD below (open this file yourself and type it
+ *      in directly — safer than pasting a real WiFi password into chat).
+ *   2. Flash this sketch.
+ *   3. Open Serial Monitor (115200 baud) to read the assigned IP address.
+ *   4. In the app: Settings -> ElderLink Device -> Register Device,
+ *      enter that IP address.
+ *
+ * NOTE: The push-button long-press (SOS) and short-press dose
+ * confirmation are handled locally on the device (buzzer, LEDs, OLED)
+ * only. Pushing those events up to Firestore as alerts/dose logs is
+ * NOT wired in this build — the project's current Firestore security
+ * rules require an authenticated user and don't cover the
+ * medications/messages/appointments/alerts collections the app
+ * actually uses, so writes from the device (or the app itself) would
+ * be rejected today. That's a separate fix (auth + rules), not a
+ * firmware problem.
  * ================================================================
  */
 
 #include <WiFi.h>
 #include <WebServer.h>
-#include <Wire.h>
-#include <U8g2lib.h>
 #include <ArduinoJson.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include <time.h>
-#include <ESP32Time.h>
+
+// Set to 0 if you don't have a DS3231 wired up yet — the device will
+// keep time via NTP over WiFi instead so you can still test the app.
+#define USE_RTC 1
+#if USE_RTC
+#include <RTClib.h>
+RTC_DS3231 rtc;
+bool rtcAvailable = false;
+#endif
 
 // =================== CONFIGURATION ===================
-#define WIFI_SSID       "Airtel__Shadow_Ghost"
-#define WIFI_PASSWORD   "**********"
-#define DEVICE_NAME     "Notice Board"
+#define WIFI_SSID       "atharva"
+#define WIFI_PASSWORD   "REPLACE_WITH_YOUR_WIFI_PASSWORD"
+#define DEVICE_NAME     "ElderLink Medicine Box"
 
 // PINS
+#define BUTTON_PIN      26
+#define BUZZER_PIN      25
+#define RED_LED_PIN     33
+#define GREEN_LED_PIN   32
 #define SDA_PIN         21
 #define SCL_PIN         22
-#define BUTTON_PIN      4
-#define BUZZER_PIN      18          // GPIO 18 for buzzer
+
+// OLED
+#define OLED_WIDTH      128
+#define OLED_HEIGHT     64
+#define OLED_I2C_ADDR   0x3C   // try 0x3D if the screen stays blank
 
 // TIMING
-#define DEBOUNCE_MS     200
-#define LONG_PRESS_MS   1000
-#define MAX_NOTICES     10
-#define IDLE_TIMEOUT_MS 30000
-#define SCREENSAVER_SPEED 50
-#define BUZZER_DURATION 1000        // 1 second beep
+#define GRACE_PERIOD_MS       (5UL * 60UL * 1000UL)   // 5 min missed-dose window
+#define MESSAGE_DISPLAY_MS    15000UL
+#define APPOINTMENT_DISPLAY_MS 10000UL
+#define CONFIRM_DISPLAY_MS    3000UL
+#define LONG_PRESS_MS         3000UL
+#define DEBOUNCE_MS           50UL
+#define MAX_MED_SLOTS         12
+#define MAX_APPOINTMENTS      5
+#define SOS_BEEP_MS           150UL
 
-// =================== TIMEZONE CONFIG ===================
-// Format: {GMT_OFFSET_SEC, DST_OFFSET_SEC, "Timezone Name"}
-// Common timezones:
-struct TimezoneConfig {
-  long gmtOffsetSec;
-  int daylightOffsetSec;
-  const char* name;
-  bool dstEnabled;
-};
-
-// Predefined timezones (select one or set custom)
-TimezoneConfig TZ_IST = {19800, 0, "IST", false};           // India GMT+5:30
-TimezoneConfig TZ_GMT = {0, 0, "GMT", false};               // GMT+0
-TimezoneConfig TZ_EST = {-18000, 3600, "EST", true};        // GMT-5, DST +1
-TimezoneConfig TZ_CET = {3600, 3600, "CET", true};          // GMT+1, DST +1
-TimezoneConfig TZ_JST = {32400, 0, "JST", false};           // Japan GMT+9
-TimezoneConfig TZ_AEST = {36000, 3600, "AEST", true};       // Australia GMT+10
-
-// SELECT YOUR TIMEZONE HERE:
-TimezoneConfig currentTZ = TZ_IST;  // Change to your timezone
-
-// NTP Servers (regional for better sync)
-const char* NTP_SERVERS[] = {
-  "pool.ntp.org",
-  "time.google.com",
-  "time.windows.com"
-};
+// Timezone (IST default — change GMT_OFFSET_SEC for yours)
+const long GMT_OFFSET_SEC = 19800;   // +5:30
+const int  DST_OFFSET_SEC = 0;
+const char* NTP_SERVER = "pool.ntp.org";
 
 // =================== GLOBAL OBJECTS ===================
-U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R0, U8X8_PIN_NONE);
+Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
+bool oledAvailable = false;
 WebServer server(80);
-ESP32Time rtc;
 
-// =================== NOTICE STORAGE ===================
-struct Notice {
-  String title;
-  String message;
+// =================== SCHEDULE STORAGE ===================
+struct MedSlot {
   bool active;
-  int year, month, day, hour, minute;
-  bool displayed;
+  String name;
+  String slot;       // "morning" | "afternoon" | "night"
+  int hour, minute;
+  bool firedToday;    // alarm has sounded for today's occurrence
+  bool takenToday;    // confirmed via button during grace period
+  int lastFiredDay;   // day-of-month this slot last fired, to reset daily
 };
 
-Notice notices[MAX_NOTICES];
-int noticeCount = 0;
-int currentNoticeIndex = 0;
+struct Appointment {
+  bool active;
+  String title;
+  String notes;
+  int year, month, day, hour, minute;
+  bool notified;
+};
 
-// =================== INPUT/OUTPUT ===================
-bool lastButtonState = HIGH;
-unsigned long buttonPressTime = 0;
-unsigned long lastDebounceTime = 0;
-bool buttonHandled = false;
-bool buzzerActive = false;
-unsigned long buzzerStartTime = 0;
+MedSlot medSlots[MAX_MED_SLOTS];
+Appointment appointments[MAX_APPOINTMENTS];
 
-// =================== SCREENSAVER ===================
-bool screensaverActive = false;
-unsigned long lastActivityTime = 0;
-int emojiX = 64, emojiY = 32;
-int emojiDX = 2, emojiDY = 2;
-int currentEmoji = 0;
-int frame = 0;
-int starX[10], starY[10];
+String lastMessageText = "";
+String lastMessageSender = "";
 
-// =================== TIME ===================
-bool timeSynced = false;
-struct tm timeinfo;
+// =================== DISPLAY STATE MACHINE ===================
+enum DisplayMode {
+  MODE_IDLE_CLOCK,
+  MODE_MED_DUE,
+  MODE_MED_MISSED,
+  MODE_MED_CONFIRMED,
+  MODE_MESSAGE,
+  MODE_APPOINTMENT,
+  MODE_SOS
+};
 
-// =================== ANIMATION ===================
-// (Animations removed per request)
+DisplayMode displayMode = MODE_IDLE_CLOCK;
+unsigned long displayModeUntil = 0;   // 0 = sticky until superseded
+int activeMedSlotIndex = -1;
 
-// =================== EMOJIS ===================
-const uint8_t emoji_smile[] = {0b00111100,0b01000010,0b10100101,0b10000001,0b10100101,0b10011001,0b01000010,0b00111100};
-const uint8_t emoji_heart[] = {0b00000000,0b01100110,0b11111111,0b11111111,0b01111110,0b00111100,0b00011000,0b00000000};
-const uint8_t emoji_star[] = {0b00010000,0b00111000,0b01111100,0b11111110,0b01111100,0b00111000,0b00010000,0b00000000};
-const uint8_t emoji_note[] = {0b00001100,0b00001110,0b00001010,0b00001000,0b00001000,0b01111000,0b01111000,0b00000000};
-const uint8_t emoji_bell[] = {0b00010000,0b00111000,0b00111000,0b00111000,0b01111100,0b00000000,0b00010000,0b00000000};
-const uint8_t emoji_clock[] = {0b00111100,0b01000010,0b10000101,0b10001101,0b10010001,0b10100001,0b01000010,0b00111100};
+// =================== INPUT STATE ===================
+bool buttonPressed = false;
+unsigned long buttonDownAt = 0;
+unsigned long lastButtonEdgeAt = 0;
+bool longPressFired = false;
 
-const uint8_t* emojis[] = {emoji_smile, emoji_heart, emoji_star, emoji_note, emoji_bell, emoji_clock};
+// =================== BUZZER ===================
+bool buzzerOn = false;
+int buzzerPattern = 0;   // 0 = continuous, >0 = number of SOS beeps remaining
+unsigned long buzzerNextToggle = 0;
 
-// Animation icons
-const uint8_t icon_new[] = {0b00000000,0b00000100,0b00001110,0b00011111,0b00001110,0b00000100,0b00000000,0b00000000};
-const uint8_t icon_alert[] = {0b00001000,0b00011100,0b00111110,0b01111111,0b00111110,0b00011100,0b00001000,0b00000000};
+// =================== TIME HELPERS ===================
+struct SimpleTime {
+  int year, month, day, hour, minute, second;
+};
+
+bool getCurrentTime(SimpleTime &t) {
+#if USE_RTC
+  if (rtcAvailable) {
+    DateTime now = rtc.now();
+    t.year = now.year(); t.month = now.month(); t.day = now.day();
+    t.hour = now.hour(); t.minute = now.minute(); t.second = now.second();
+    return true;
+  }
+#endif
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo, 100)) return false;
+  t.year = timeinfo.tm_year + 1900;
+  t.month = timeinfo.tm_mon + 1;
+  t.day = timeinfo.tm_mday;
+  t.hour = timeinfo.tm_hour;
+  t.minute = timeinfo.tm_min;
+  t.second = timeinfo.tm_sec;
+  return true;
+}
 
 // =================== SETUP ===================
 void setup() {
   Serial.begin(115200);
-  
-  // Initialize pins
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  delay(200);
+  Serial.println("\n[ElderLink] Booting...");
+
+  pinMode(BUTTON_PIN, INPUT);   // external 10k pull-down already on the board
   pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
-  
-  // Random stars
-  for(int i=0; i<10; i++) {
-    starX[i] = random(0, 128);
-    starY[i] = random(0, 64);
-  }
-  
-  // Init display
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
+
+  for (int i = 0; i < MAX_MED_SLOTS; i++) medSlots[i].active = false;
+  for (int i = 0; i < MAX_APPOINTMENTS; i++) appointments[i].active = false;
+
   Wire.begin(SDA_PIN, SCL_PIN);
-  if(!display.begin()) {
-    Serial.println(F("[OLED] ERROR!"));
+  oledAvailable = display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR);
+  if (oledAvailable) {
+    display.setTextColor(SSD1306_WHITE);
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("ElderLink");
+    display.setCursor(0, 12);
+    display.println("Starting...");
+    display.display();
+  } else {
+    Serial.println("[OLED] SSD1306 not found at 0x3C — check wiring/address.");
   }
-  
-  // Clear notices
-  for(int i=0; i<MAX_NOTICES; i++) {
-    notices[i].active = false;
-    notices[i].displayed = false;
-    notices[i].year = 0;
+
+#if USE_RTC
+  rtcAvailable = rtc.begin();
+  if (rtcAvailable && rtc.lostPower()) {
+    Serial.println("[RTC] Lost power, time may be wrong until NTP syncs.");
   }
-  
-  showBootScreen();
-  
-  // Connect WiFi
+  Serial.println(rtcAvailable ? "[RTC] DS3231 found." : "[RTC] Not found, will rely on NTP.");
+#endif
+
+  connectWiFi();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    configTime(GMT_OFFSET_SEC, DST_OFFSET_SEC, NTP_SERVER);
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 8000)) {
+      Serial.println("[Time] NTP synced.");
+#if USE_RTC
+      if (rtcAvailable) {
+        rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1,
+                             timeinfo.tm_mday, timeinfo.tm_hour,
+                             timeinfo.tm_min, timeinfo.tm_sec));
+      }
+#endif
+    } else {
+      Serial.println("[Time] NTP sync failed.");
+    }
+  }
+
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/ping", HTTP_GET, handlePing);
+  server.on("/status", HTTP_GET, handleStatus);
+  server.on("/send-message", HTTP_POST, handleSendMessage);
+  server.on("/set-medication", HTTP_POST, handleSetMedication);
+  server.on("/set-appointment", HTTP_POST, handleSetAppointment);
+  server.onNotFound([]() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(404, "application/json", "{\"error\":\"not found\"}");
+  });
+  server.begin();
+  Serial.println("[Server] Listening on port 80.");
+
+  showIdleClock(true);
+}
+
+void connectWiFi() {
+  WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.printf("[WiFi] Connecting to %s", WIFI_SSID);
+
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 40) {
     delay(500);
+    Serial.print(".");
     attempts++;
   }
-  
+  Serial.println();
+
   if (WiFi.status() == WL_CONNECTED) {
-    // Show IP on screen
-    display.clearBuffer();
-    display.setFont(u8g2_font_ncenB14_tr);
-    display.drawStr(5, 20, "WIFI CONNECTED");
-    display.setFont(u8g2_font_ncenB08_tr);
-    display.drawStr(10, 40, "IP Address:");
-    display.setCursor(10, 55);
-    display.print(WiFi.localIP().toString());
-    display.sendBuffer();
+    Serial.print("[WiFi] Connected. IP address: ");
+    Serial.println(WiFi.localIP());
+    if (oledAvailable) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(0, 0);
+      display.println("WiFi connected");
+      display.setCursor(0, 16);
+      display.println(WiFi.localIP().toString());
+      display.display();
+    }
     delay(3000);
-    
-    syncTime();
-  }
-  
-  // Setup server
-  server.on("/", handleRoot);
-  server.on("/ping", handlePing);
-  server.on("/get-time", handleGetTime);
-  server.on("/set-timezone", handleSetTimezone);
-  server.on("/list-notices", handleListNotices);
-  server.on("/update-notice", handleUpdateNotice);
-  server.begin();
-  
-  resetActivityTimer();
-  showCurrentNotice();
-  
-  Serial.printf("[System] Ready! Timezone: %s (GMT%+ld)\n", 
-    currentTZ.name, currentTZ.gmtOffsetSec/3600);
-}
-
-// =================== TIME SYNC ===================
-void syncTime() {
-  Serial.print("[Time] Syncing NTP...");
-  
-  configTime(currentTZ.gmtOffsetSec, 
-             currentTZ.dstEnabled ? currentTZ.daylightOffsetSec : 0, 
-             NTP_SERVERS[0], NTP_SERVERS[1], NTP_SERVERS[2]);
-  
-  int retries = 0;
-  while (!timeSynced && retries < 15) {
-    if (getLocalTime(&timeinfo)) {
-      timeSynced = true;
-      rtc.setTimeStruct(timeinfo);
-      Serial.println(" OK!");
-      Serial.printf("[Time] %02d/%02d/%04d %02d:%02d:%02d %s\n",
-        timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year+1900,
-        timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
-        currentTZ.name);
-    } else {
-      delay(800);
-      retries++;
-      Serial.print(".");
+  } else {
+    Serial.println("[WiFi] Failed to connect. Check credentials.");
+    if (oledAvailable) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(0, 0);
+      display.println("WiFi FAILED");
+      display.setCursor(0, 16);
+      display.println("Check password");
+      display.display();
     }
   }
-  
-  if (!timeSynced) Serial.println(" FAILED!");
-}
-
-void updateTime() {
-  static unsigned long lastUpdate = 0;
-  if (millis() - lastUpdate > 1000) {
-    timeinfo = rtc.getTimeStruct();
-    lastUpdate = millis();
-    
-    // Auto DST adjustment (simplified - real DST needs date rules)
-    if (currentTZ.dstEnabled && isDST()) {
-      // Apply DST offset if not already applied
-    }
-  }
-}
-
-// Simple DST check (Northern Hemisphere approximation)
-bool isDST() {
-  if (!currentTZ.dstEnabled) return false;
-  int month = timeinfo.tm_mon + 1; // 1-12
-  int day = timeinfo.tm_mday;
-  // DST: Last Sunday March to Last Sunday October
-  if (month < 3 || month > 10) return false;
-  if (month > 3 && month < 10) return true;
-  // March/October boundary check (simplified)
-  return (month == 3 && day > 25) || (month == 10 && day < 25);
-}
-
-bool isTimeDue(Notice* n) {
-  if (n->year == 0) return true;
-  
-  if (timeinfo.tm_year + 1900 < n->year) return false;
-  if (timeinfo.tm_year + 1900 > n->year) return true;
-  
-  if (timeinfo.tm_mon + 1 < n->month) return false;
-  if (timeinfo.tm_mon + 1 > n->month) return true;
-  
-  if (timeinfo.tm_mday < n->day) return false;
-  if (timeinfo.tm_mday > n->day) return true;
-  
-  if (timeinfo.tm_hour < n->hour) return false;
-  if (timeinfo.tm_hour > n->hour) return true;
-  
-  return timeinfo.tm_min >= n->minute;
 }
 
 // =================== MAIN LOOP ===================
 void loop() {
   server.handleClient();
   handleButton();
-  updateTime();
-  checkScheduledNotices();
   handleBuzzer();
-  handleScreensaver();
+  checkMedicationSchedule();
+  checkAppointmentSchedule();
+  updateDisplay();
   delay(10);
 }
 
-// =================== BUZZER ===================
-void triggerBuzzer() {
-  buzzerActive = true;
-  buzzerStartTime = millis();
-  digitalWrite(BUZZER_PIN, HIGH);
-  Serial.println("[Buzzer] ON - New notice!");
-}
-
-void handleBuzzer() {
-  if (buzzerActive && (millis() - buzzerStartTime >= BUZZER_DURATION)) {
-    digitalWrite(BUZZER_PIN, LOW);
-    buzzerActive = false;
-    Serial.println("[Buzzer] OFF");
-  }
-}
-
-// =================== NOTICE RENDERING ===================
-// Original animated drawing functions removed. Note: showCurrentNotice() handles display.
-
-// =================== SCHEDULER ===================
-void checkScheduledNotices() {
-  static unsigned long lastCheck = 0;
-  if (millis() - lastCheck < 5000) return;
-  lastCheck = millis();
-  
-  for (int i = 0; i < MAX_NOTICES; i++) {
-    if (notices[i].active && !notices[i].displayed && notices[i].year > 0) {
-      if (isTimeDue(&notices[i])) {
-        Serial.printf("[Scheduler] Notice '%s' is DUE!\n", notices[i].title.c_str());
-        notices[i].displayed = true;
-        currentNoticeIndex = i;
-        noticeCount++;
-        
-        // TRIGGER BUZZER AND SHOW NOTICE!
-        triggerBuzzer();
-        showCurrentNotice();
-        
-        resetActivityTimer();
-      }
-    }
-  }
-}
-
-// =================== SCREENSAVER ===================
-void resetActivityTimer() {
-  lastActivityTime = millis();
-  if (screensaverActive) {
-    screensaverActive = false;
-    showCurrentNotice();
-  }
-}
-
-bool isIdle() {
-  return (millis() - lastActivityTime) > IDLE_TIMEOUT_MS;
-}
-
-void handleScreensaver() {
-  if (isIdle() && !screensaverActive) {
-    screensaverActive = true;
-    Serial.println("[Screensaver] ON");
-  }
-  
-  if (screensaverActive) {
-    drawScreensaver();
-    delay(SCREENSAVER_SPEED);
-  }
-}
-
-void drawScreensaver() {
-  display.clearBuffer();
-  drawTwinklingStars();
-  
-  // Bouncing emoji
-  emojiX += emojiDX;
-  emojiY += emojiDY;
-  if (emojiX <= 0 || emojiX >= 120) {
-    emojiDX = -emojiDX;
-    currentEmoji = random(0, 6);
-  }
-  if (emojiY <= 0 || emojiY >= 56) {
-    emojiDY = -emojiDY;
-    currentEmoji = random(0, 6);
-  }
-  
-  drawEmoji(currentEmoji, emojiX, emojiY, 2);
-  
-  // Show current time
-  if (timeSynced) {
-    display.setFont(u8g2_font_ncenB14_tr);
-    display.setCursor(25, 15);
-    char timeStr[20];
-    sprintf(timeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
-    display.print(timeStr);
-    
-    // Date
-    display.setFont(u8g2_font_ncenB08_tr);
-    display.setCursor(20, 55);
-    char dateStr[30];
-    sprintf(dateStr, "%02d/%02d/%04d %s", 
-      timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year+1900,
-      currentTZ.name);
-    display.print(dateStr);
-  }
-  
-  // Scrolling status
-  display.setFont(u8g2_font_5x7_tr);
-  String status = String(noticeCount) + " notices | " + 
-                  (currentTZ.dstEnabled && isDST() ? "DST ON" : currentTZ.name);
-  int width = display.getStrWidth(status.c_str());
-  int x = 128 - ((frame * 2) % (width + 150));
-  display.setCursor(x, 62);
-  display.print(status);
-  
-  display.sendBuffer();
-  frame++;
-}
-
-void drawTwinklingStars() {
-  for(int i=0; i<10; i++) {
-    if (random(0, 10) > 7) display.drawPixel(starX[i], starY[i]);
-    if (random(0, 50) == 0) {
-      starX[i] = random(0, 128);
-      starY[i] = random(0, 64);
-    }
-  }
-}
-
-void drawEmoji(int index, int x, int y, int scale) {
-  const uint8_t* bitmap = emojis[index];
-  for (int row = 0; row < 8; row++) {
-    for (int col = 0; col < 8; col++) {
-      if (bitmap[row] & (1 << (7 - col))) {
-        display.drawBox(x + (col * scale), y + (row * scale), scale, scale);
-      }
-    }
-  }
-}
-
-void drawBitmap(const uint8_t* bitmap, int x, int y, int scale) {
-  for (int row = 0; row < 8; row++) {
-    for (int col = 0; col < 8; col++) {
-      if (bitmap[row] & (1 << (7 - col))) {
-        display.drawBox(x + (col * scale), y + (row * scale), scale, scale);
-      }
-    }
-  }
+void confirmDose(int idx) {
+  stopBuzzer();
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, HIGH);
+  displayMode = MODE_MED_CONFIRMED;
+  displayModeUntil = millis() + CONFIRM_DISPLAY_MS;
+  Serial.printf("[Medicine] '%s' (%s) confirmed taken.\n",
+                medSlots[idx].name.c_str(), medSlots[idx].slot.c_str());
 }
 
 // =================== BUTTON ===================
 void handleButton() {
-  bool reading = digitalRead(BUTTON_PIN);
-  
-  if (reading != lastButtonState) {
-    lastDebounceTime = millis();
-  }
-  
-  if ((millis() - lastDebounceTime) > DEBOUNCE_MS) {
-    if (reading == LOW && !buttonHandled) {
-      if (buttonPressTime == 0) buttonPressTime = millis();
-      
-      if ((millis() - buttonPressTime) > LONG_PRESS_MS) {
-        clearCurrentNotice();
-        resetActivityTimer();
-        buttonHandled = true;
-        buttonPressTime = 0;
+  bool reading = digitalRead(BUTTON_PIN) == HIGH;
+  unsigned long now = millis();
+
+  if (reading != buttonPressed && (now - lastButtonEdgeAt) > DEBOUNCE_MS) {
+    lastButtonEdgeAt = now;
+    buttonPressed = reading;
+
+    if (buttonPressed) {
+      buttonDownAt = now;
+      longPressFired = false;
+    } else {
+      unsigned long heldFor = now - buttonDownAt;
+      if (!longPressFired && heldFor < LONG_PRESS_MS) {
+        onShortPress();
       }
     }
-    else if (reading == HIGH && buttonPressTime > 0 && !buttonHandled) {
-      nextNotice();
-      resetActivityTimer();
-      buttonPressTime = 0;
-    }
-    else if (reading == HIGH) {
-      buttonHandled = false;
-      buttonPressTime = 0;
-    }
   }
-  lastButtonState = reading;
-}
 
-void nextNotice() {
-  if (noticeCount <= 1) return;
-  
-  int attempts = 0;
-  do {
-    currentNoticeIndex = (currentNoticeIndex + 1) % MAX_NOTICES;
-    attempts++;
-  } while ((!notices[currentNoticeIndex].active || 
-           (notices[currentNoticeIndex].year > 0 && !notices[currentNoticeIndex].displayed)) 
-           && attempts < MAX_NOTICES);
-  
-  if (attempts < MAX_NOTICES) {
-    // Show instantly when manually switching
-    showCurrentNotice();
-    // No buzzer for manual next (only for new notices)
+  if (buttonPressed && !longPressFired && (now - buttonDownAt) >= LONG_PRESS_MS) {
+    longPressFired = true;
+    onLongPress();
   }
 }
 
-void clearCurrentNotice() {
-  if (noticeCount > 1) {
-    notices[currentNoticeIndex].active = false;
-    noticeCount--;
-    
-    for(int i=0; i<MAX_NOTICES; i++) {
-      if (notices[i].active && (notices[i].year == 0 || notices[i].displayed)) {
-        currentNoticeIndex = i;
-        break;
-      }
-    }
+void onShortPress() {
+  digitalWrite(GREEN_LED_PIN, LOW);
+  digitalWrite(RED_LED_PIN, LOW);
+
+  if (buzzerOn && activeMedSlotIndex >= 0) {
+    medSlots[activeMedSlotIndex].takenToday = true;
+    confirmDose(activeMedSlotIndex);
   } else {
-    notices[currentNoticeIndex].title = "Cleared";
-    notices[currentNoticeIndex].message = "Waiting...";
-    notices[currentNoticeIndex].year = 0;
+    // No active alarm — dismiss whatever is showing back to the clock.
+    displayMode = MODE_IDLE_CLOCK;
+    displayModeUntil = 0;
   }
-  
-  showCurrentNotice();
 }
 
-void flashScreen() {
-  display.setDrawColor(0);
-  display.drawBox(0, 0, 128, 64);
-  display.sendBuffer();
-  delay(50);
-  showCurrentNotice();
+void onLongPress() {
+  Serial.println("[SOS] Long press detected — emergency signal (local only).");
+  stopBuzzer();
+  buzzerPattern = 6;   // 6 short beeps
+  buzzerOn = true;
+  buzzerNextToggle = millis();
+  digitalWrite(BUZZER_PIN, HIGH);
+  digitalWrite(RED_LED_PIN, HIGH);
+  displayMode = MODE_SOS;
+  displayModeUntil = millis() + 8000;
+}
+
+// =================== BUZZER ===================
+void stopBuzzer() {
+  digitalWrite(BUZZER_PIN, LOW);
+  buzzerOn = false;
+  buzzerPattern = 0;
+}
+
+void handleBuzzer() {
+  if (buzzerPattern <= 0) return;   // continuous alarm handled elsewhere, or idle
+  unsigned long now = millis();
+  if (now < buzzerNextToggle) return;
+
+  bool currentlyHigh = digitalRead(BUZZER_PIN) == HIGH;
+  digitalWrite(BUZZER_PIN, currentlyHigh ? LOW : HIGH);
+  buzzerNextToggle = now + SOS_BEEP_MS;
+
+  if (currentlyHigh) {
+    buzzerPattern--;
+    if (buzzerPattern <= 0) {
+      digitalWrite(BUZZER_PIN, LOW);
+      buzzerOn = false;
+    }
+  }
+}
+
+// =================== MEDICATION SCHEDULE ===================
+void checkMedicationSchedule() {
+  static unsigned long lastCheck = 0;
+  if (millis() - lastCheck < 1000) return;
+  lastCheck = millis();
+
+  SimpleTime now;
+  if (!getCurrentTime(now)) return;
+
+  // Roll over "firedToday"/"takenToday" flags at day boundary.
+  for (int i = 0; i < MAX_MED_SLOTS; i++) {
+    if (!medSlots[i].active) continue;
+    if (medSlots[i].lastFiredDay != now.day) {
+      medSlots[i].firedToday = false;
+      medSlots[i].takenToday = false;
+    }
+  }
+
+  // Fire any due slot that hasn't fired yet today.
+  for (int i = 0; i < MAX_MED_SLOTS; i++) {
+    MedSlot &s = medSlots[i];
+    if (!s.active || s.firedToday) continue;
+    if (now.hour == s.hour && now.minute == s.minute) {
+      s.firedToday = true;
+      s.takenToday = false;
+      s.lastFiredDay = now.day;
+      activeMedSlotIndex = i;
+
+      buzzerOn = true;
+      buzzerPattern = 0;   // continuous until confirmed/missed
+      digitalWrite(BUZZER_PIN, HIGH);
+      displayMode = MODE_MED_DUE;
+      displayModeUntil = millis() + GRACE_PERIOD_MS;
+
+      Serial.printf("[Medicine] '%s' due now (%s %02d:%02d).\n",
+                    s.name.c_str(), s.slot.c_str(), s.hour, s.minute);
+    }
+  }
+
+  // Grace period expiry -> missed dose.
+  if (displayMode == MODE_MED_DUE && activeMedSlotIndex >= 0 &&
+      displayModeUntil != 0 && millis() >= displayModeUntil) {
+    MedSlot &s = medSlots[activeMedSlotIndex];
+    if (!s.takenToday) {
+      digitalWrite(RED_LED_PIN, HIGH);
+      displayMode = MODE_MED_MISSED;
+      displayModeUntil = 0;   // sticky until button press
+      Serial.printf("[Medicine] '%s' MISSED.\n", s.name.c_str());
+    }
+  }
+}
+
+// =================== APPOINTMENT SCHEDULE ===================
+void checkAppointmentSchedule() {
+  static unsigned long lastCheck = 0;
+  if (millis() - lastCheck < 1000) return;
+  lastCheck = millis();
+
+  SimpleTime now;
+  if (!getCurrentTime(now)) return;
+
+  for (int i = 0; i < MAX_APPOINTMENTS; i++) {
+    Appointment &a = appointments[i];
+    if (!a.active || a.notified) continue;
+    if (now.year == a.year && now.month == a.month && now.day == a.day &&
+        now.hour == a.hour && now.minute == a.minute) {
+      // A medicine alarm takes priority over the buzzer/OLED — don't mark
+      // this notified yet so it retries once the alarm clears.
+      if (displayMode == MODE_MED_DUE) continue;
+
+      a.notified = true;
+      buzzerPattern = 2;
+      buzzerOn = true;
+      buzzerNextToggle = millis();
+      digitalWrite(BUZZER_PIN, HIGH);
+      displayMode = MODE_APPOINTMENT;
+      displayModeUntil = millis() + APPOINTMENT_DISPLAY_MS;
+      Serial.printf("[Appointment] '%s' now.\n", a.title.c_str());
+    }
+  }
 }
 
 // =================== DISPLAY ===================
-void showBootScreen() {
-  display.clearBuffer();
-  display.setFont(u8g2_font_ncenB14_tr);
-  display.drawStr(10, 20, "BOOT OK!");
-  display.setFont(u8g2_font_ncenB08_tr);
-  display.drawStr(0, 40, "Notice Board v3.5");
-  display.setFont(u8g2_font_5x7_tr);
-  display.drawStr(0, 55, "Timezone + Buzzer + Anim");
-  display.sendBuffer();
-  delay(1500);
-}
+void updateDisplay() {
+  static DisplayMode lastMode = MODE_IDLE_CLOCK;
+  static int lastMedIdx = -1;
+  static unsigned long lastClockRefresh = 0;
 
-void showCurrentNotice() {
-  if (!notices[currentNoticeIndex].active) return;
-  displayNotice(&notices[currentNoticeIndex]);
-}
+  if (!oledAvailable) return;
 
-void displayNotice(Notice* n) {
-  display.clearBuffer();
-  
-  // Title bar
-  display.setDrawColor(1);
-  display.drawBox(0, 0, 128, 14);
-  display.setDrawColor(0);
-  display.setFont(u8g2_font_ncenB08_tr);
-  display.setCursor(2, 10);
-  
-  String title = n->title.substring(0, 15);
-  if (n->year > 0 && !n->displayed) {
-    title = "⏰ " + title;
+  if (displayModeUntil != 0 && millis() >= displayModeUntil &&
+      displayMode != MODE_MED_DUE) {
+    displayMode = MODE_IDLE_CLOCK;
+    displayModeUntil = 0;
+    digitalWrite(GREEN_LED_PIN, LOW);
   }
-  display.print(title);
-  
-  // Counter
-  String counter = String(currentNoticeIndex + 1) + "/" + String(noticeCount);
-  display.setCursor(105, 10);
-  display.print(counter);
-  
-  // Message
-  display.setDrawColor(1);
-  display.setFont(u8g2_font_ncenB08_tr);
-  display.setCursor(0, 28);
-  printWrappedText(n->message, 0, 28, 128, 14);
-  
-  // Footer info
-  display.setFont(u8g2_font_5x7_tr);
-  display.setCursor(0, 55);
-  if (n->year > 0) {
-    char timeStr[30];
-    sprintf(timeStr, "%02d/%02d %02d:%02d %s", 
-      n->day, n->month, n->hour, n->minute,
-      n->displayed ? "SHOWN" : "PENDING");
-    display.print(timeStr);
-  }
-  
-  // Timezone indicator
-  display.setCursor(90, 55);
-  display.print(currentTZ.name);
-  
-  display.sendBuffer();
-}
 
-void printWrappedText(String text, int x, int y, int maxWidth, int lineHeight) {
-  int len = text.length();
-  int line = 0;
-  String currentLine = "";
-  
-  for (int i = 0; i < len && line < 3; i++) {
-    currentLine += text[i];
-    int width = display.getStrWidth(currentLine.c_str());
-    
-    if (width >= maxWidth - 5 || text[i] == '\n') {
-      display.setCursor(x, y + (line * lineHeight));
-      display.print(currentLine);
-      currentLine = "";
-      line++;
+  bool changed = (displayMode != lastMode) ||
+                 (displayMode == MODE_MED_DUE && activeMedSlotIndex != lastMedIdx);
+
+  if (displayMode == MODE_IDLE_CLOCK) {
+    if (millis() - lastClockRefresh < 1000 && !changed) return;
+    lastClockRefresh = millis();
+    showIdleClock(false);
+  } else if (changed) {
+    switch (displayMode) {
+      case MODE_MED_DUE:
+      case MODE_MED_MISSED:
+        showMedicineAlert(displayMode == MODE_MED_MISSED);
+        break;
+      case MODE_MED_CONFIRMED:
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setCursor(0, 0);
+        display.println("MEDICINE TAKEN");
+        printCentered("CONFIRMED", 30, 2);
+        display.display();
+        break;
+      case MODE_MESSAGE:
+        showMessage();
+        break;
+      case MODE_APPOINTMENT:
+        showAppointment();
+        break;
+      case MODE_SOS:
+        display.clearDisplay();
+        printCentered("!! SOS !!", 16, 2);
+        printCentered("Help is on the way", 44, 1);
+        display.display();
+        break;
+      default:
+        break;
     }
   }
-  
-  if (currentLine.length() > 0 && line < 3) {
-    display.setCursor(x, y + (line * lineHeight));
-    display.print(currentLine);
+
+  lastMode = displayMode;
+  lastMedIdx = activeMedSlotIndex;
+}
+
+void printCentered(const String &text, int y, uint8_t size) {
+  display.setTextSize(size);
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds(text, 0, y, &x1, &y1, &w, &h);
+  int x = (OLED_WIDTH - (int)w) / 2;
+  if (x < 0) x = 0;
+  display.setCursor(x, y);
+  display.println(text);
+}
+
+void showIdleClock(bool force) {
+  if (!oledAvailable) return;
+  SimpleTime t;
+  static int lastMinute = -1;
+  if (!getCurrentTime(t)) {
+    if (force) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(0, 0);
+      display.println("ElderLink Ready");
+      display.setCursor(0, 16);
+      display.println(WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "No WiFi");
+      display.display();
+    }
+    return;
   }
+  if (!force && t.minute == lastMinute) return;
+  lastMinute = t.minute;
+
+  char timeStr[9];
+  snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d", t.hour, t.minute, t.second);
+
+  display.clearDisplay();
+  printCentered(timeStr, 16, 2);
+  printCentered(WiFi.status() == WL_CONNECTED ? "ElderLink Ready" : "No WiFi", 48, 1);
+  display.display();
+}
+
+void showMedicineAlert(bool missed) {
+  MedSlot &s = medSlots[activeMedSlotIndex];
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println(missed ? "MEDICINE MISSED!" : "TIME FOR MEDICINE");
+  display.drawFastHLine(0, 10, OLED_WIDTH, SSD1306_WHITE);
+  printCentered(s.name.substring(0, 10), 24, 2);
+  char timeStr[16];
+  snprintf(timeStr, sizeof(timeStr), "%02d:%02d %s", s.hour, s.minute, s.slot.c_str());
+  printCentered(timeStr, 52, 1);
+  display.display();
+}
+
+void showMessage() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println(("From " + lastMessageSender).substring(0, 21));
+  display.drawFastHLine(0, 10, OLED_WIDTH, SSD1306_WHITE);
+  display.setCursor(0, 16);
+  display.println(lastMessageText.substring(0, 21));
+  if (lastMessageText.length() > 21) {
+    display.setCursor(0, 26);
+    display.println(lastMessageText.substring(21, 42));
+  }
+  display.display();
+}
+
+void showAppointment() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("Appointment now:");
+  display.drawFastHLine(0, 10, OLED_WIDTH, SSD1306_WHITE);
+  for (int i = 0; i < MAX_APPOINTMENTS; i++) {
+    if (appointments[i].active && appointments[i].notified) {
+      printCentered(appointments[i].title.substring(0, 16), 28, 1);
+      break;
+    }
+  }
+  display.display();
 }
 
 // =================== WEB HANDLERS ===================
 void handleRoot() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
-  String html = "<h1>Smart Notice Board v3.5</h1>";
-  html += "<p>Time: " + rtc.getTime("%A, %B %d %Y %H:%M:%S ") + currentTZ.name + "</p>";
-  html += "<p>Timezone: GMT" + String(currentTZ.gmtOffsetSec/3600) + 
-          (currentTZ.dstEnabled ? " (DST supported)" : "") + "</p>";
-  html += "<p>Notices: " + String(noticeCount) + "</p>";
-  html += "<p>Endpoints: /update-notice, /list-notices, /get-time, /set-timezone</p>";
+  String html = "<h1>" DEVICE_NAME "</h1>";
+  html += "<p>Status: online</p>";
+  html += "<p>Endpoints: /ping /status /send-message /set-medication /set-appointment</p>";
   server.send(200, "text/html", html);
 }
 
@@ -608,165 +630,139 @@ void handlePing() {
   server.send(200, "text/plain", "pong");
 }
 
-void handleGetTime() {
+void handleStatus() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
-  String json = "{\"time\":\"" + rtc.getTime("%Y-%m-%d %H:%M:%S") + "\",";
-  json += "\"timezone\":\"" + String(currentTZ.name) + "\",";
-  json += "\"gmt_offset\":" + String(currentTZ.gmtOffsetSec) + ",";
-  json += "\"dst\":" + String(isDST() ? "true" : "false") + ",";
-  json += "\"synced\":" + String(timeSynced ? "true" : "false") + "}";
-  server.send(200, "application/json", json);
+  JsonDocument doc;
+  doc["device"] = DEVICE_NAME;
+  doc["online"] = true;
+  doc["uptimeMs"] = millis();
+  doc["freeHeap"] = ESP.getFreeHeap();
+  doc["wifiRSSI"] = WiFi.RSSI();
+  doc["oledAvailable"] = oledAvailable;
+#if USE_RTC
+  doc["rtcAvailable"] = rtcAvailable;
+#else
+  doc["rtcAvailable"] = false;
+#endif
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
 }
 
-void handleSetTimezone() {
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  
-  if (server.method() != HTTP_POST) {
-    server.send(405, "text/plain", "Method Not Allowed");
-    return;
-  }
-  
+bool parseJsonBody(JsonDocument &doc) {
   String body = server.arg("plain");
-#if ARDUINOJSON_VERSION_MAJOR >= 7
-  JsonDocument doc;
-#else
-  DynamicJsonDocument doc(256);
-#endif
-  
-  if (deserializeJson(doc, body)) {
-    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
-  
-  // Update timezone
-  currentTZ.gmtOffsetSec = doc["gmt_offset"] | currentTZ.gmtOffsetSec;
-  currentTZ.daylightOffsetSec = doc["dst_offset"] | currentTZ.daylightOffsetSec;
-  currentTZ.dstEnabled = doc["dst_enabled"] | currentTZ.dstEnabled;
-  const char* name = doc["name"];
-  if (name) currentTZ.name = name;
-  
-  // Resync with new timezone
-  syncTime();
-  
-  server.send(200, "application/json", "{\"status\":\"timezone_updated\"}");
-  Serial.printf("[Timezone] Updated to %s (GMT%+ld)\n", 
-    currentTZ.name, currentTZ.gmtOffsetSec/3600);
+  DeserializationError err = deserializeJson(doc, body);
+  return !err;
 }
 
-void handleListNotices() {
+void handleSendMessage() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
-  
-#if ARDUINOJSON_VERSION_MAJOR >= 7
   JsonDocument doc;
-#else
-  DynamicJsonDocument doc(2048);
-#endif
-
-  JsonArray arr = doc.to<JsonArray>();
-  
-  for (int i = 0; i < MAX_NOTICES; i++) {
-    if (notices[i].active) {
-      JsonObject obj = arr.createNestedObject();
-      obj["id"] = i;
-      obj["title"] = notices[i].title;
-      obj["message"] = notices[i].message;
-      obj["scheduled"] = notices[i].year > 0;
-      if (notices[i].year > 0) {
-        char buf[25];
-        sprintf(buf, "%04d-%02d-%02dT%02d:%02d", 
-          notices[i].year, notices[i].month, notices[i].day,
-          notices[i].hour, notices[i].minute);
-        obj["datetime"] = buf;
-        obj["displayed"] = notices[i].displayed;
-      }
-    }
+  if (!parseJsonBody(doc)) {
+    server.send(400, "application/json", "{\"error\":\"invalid json\"}");
+    return;
   }
-  
-  String response;
-  serializeJson(doc, response);
-  server.send(200, "application/json", response);
+
+  lastMessageText = String((const char*)(doc["text"] | ""));
+  lastMessageSender = String((const char*)(doc["sender"] | "Caregiver"));
+
+  // A medicine alarm takes priority over the buzzer/OLED — the message is
+  // still stored and acknowledged to the app, just not displayed until
+  // the alarm clears.
+  if (displayMode != MODE_MED_DUE) {
+    buzzerPattern = 1;
+    buzzerOn = true;
+    buzzerNextToggle = millis();
+    digitalWrite(BUZZER_PIN, HIGH);
+    displayMode = MODE_MESSAGE;
+    displayModeUntil = millis() + MESSAGE_DISPLAY_MS;
+  }
+
+  Serial.printf("[Message] From %s: %s\n", lastMessageSender.c_str(), lastMessageText.c_str());
+  server.send(200, "application/json", "{\"status\":\"received\"}");
 }
 
-void handleUpdateNotice() {
+void handleSetMedication() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (server.method() == HTTP_OPTIONS) {
-    server.send(204);
-    return;
-  }
-
-  String postBody = server.arg("plain");
-  
-#if ARDUINOJSON_VERSION_MAJOR >= 7
   JsonDocument doc;
-#else
-  DynamicJsonDocument doc(1024);
-#endif
-
-  DeserializationError error = deserializeJson(doc, postBody);
-  if (error) {
-    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+  if (!parseJsonBody(doc)) {
+    server.send(400, "application/json", "{\"error\":\"invalid json\"}");
     return;
   }
 
-  // Find empty slot
-  int slot = -1;
-  for(int i=0; i<MAX_NOTICES; i++) {
-    if (!notices[i].active) {
-      slot = i;
+  String name = String((const char*)(doc["name"] | ""));
+  String slot = String((const char*)(doc["slot"] | ""));
+  int hour = doc["hour"] | -1;
+  int minute = doc["minute"] | -1;
+
+  if (name.isEmpty() || hour < 0 || minute < 0) {
+    server.send(400, "application/json", "{\"error\":\"missing fields\"}");
+    return;
+  }
+
+  // Reuse an existing slot with the same name+slot label, else find a free one.
+  int target = -1;
+  for (int i = 0; i < MAX_MED_SLOTS; i++) {
+    if (medSlots[i].active && medSlots[i].name == name && medSlots[i].slot == slot) {
+      target = i;
       break;
     }
   }
-  
-  if (slot == -1) {
-    server.send(507, "application/json", "{\"error\":\"Storage full\"}");
+  if (target == -1) {
+    for (int i = 0; i < MAX_MED_SLOTS; i++) {
+      if (!medSlots[i].active) { target = i; break; }
+    }
+  }
+
+  if (target == -1) {
+    server.send(507, "application/json", "{\"error\":\"schedule full\"}");
     return;
   }
 
-  // Fill notice
-  notices[slot].title = doc["title"] | "New Notice";
-  notices[slot].message = doc["message"] | "";
-  notices[slot].active = true;
-  notices[slot].displayed = false;
-  
-  // Scheduling
-  if (doc["year"] | 0 > 0) {
-    notices[slot].year = doc["year"];
-    notices[slot].month = doc["month"];
-    notices[slot].day = doc["day"];
-    notices[slot].hour = doc["hour"];
-    notices[slot].minute = doc["minute"];
-    
-    Serial.printf("[Scheduler] #%d scheduled for %04d-%02d-%02d %02d:%02d\n",
-      slot, notices[slot].year, notices[slot].month, notices[slot].day,
-      notices[slot].hour, notices[slot].minute);
-    
-    String response = "{\"status\":\"scheduled\",\"id\":" + String(slot) + ",";
-    response += "\"datetime\":\"" + String(notices[slot].year) + "-" + 
-                String(notices[slot].month) + "-" + String(notices[slot].day) + " " +
-                String(notices[slot].hour) + ":" + String(notices[slot].minute) + "\"}";
-    server.send(200, "application/json", response);
-    
-  } else {
-    // IMMEDIATE - TRIGGER BUZZER + ANIMATION!
-    notices[slot].year = 0;
-    notices[slot].displayed = true;
-    noticeCount++;
-    currentNoticeIndex = slot;
-    
-    // BUZZER ON!
-    triggerBuzzer();
-    
-    // SHOW INSTANTLY!
-    showCurrentNotice();
-    
-    resetActivityTimer();
-    
-    String response = "{\"status\":\"immediate\",\"id\":" + String(slot) + "}";
-    server.send(200, "application/json", response);
-    
-    Serial.printf("[API] Immediate notice #%d\n", slot);
+  medSlots[target].active = true;
+  medSlots[target].name = name;
+  medSlots[target].slot = slot;
+  medSlots[target].hour = hour;
+  medSlots[target].minute = minute;
+  medSlots[target].firedToday = false;
+  medSlots[target].takenToday = false;
+  medSlots[target].lastFiredDay = -1;
+
+  Serial.printf("[Schedule] '%s' (%s) set for %02d:%02d\n", name.c_str(), slot.c_str(), hour, minute);
+  server.send(200, "application/json", "{\"status\":\"scheduled\"}");
+}
+
+void handleSetAppointment() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  JsonDocument doc;
+  if (!parseJsonBody(doc)) {
+    server.send(400, "application/json", "{\"error\":\"invalid json\"}");
+    return;
   }
+
+  int target = -1;
+  for (int i = 0; i < MAX_APPOINTMENTS; i++) {
+    if (!appointments[i].active) { target = i; break; }
+  }
+  if (target == -1) {
+    // Overwrite the oldest (index 0) rather than reject, since this is a
+    // small on-device buffer, not the source of truth (Firestore is).
+    target = 0;
+  }
+
+  appointments[target].active = true;
+  appointments[target].title = String((const char*)(doc["title"] | "Appointment"));
+  appointments[target].notes = String((const char*)(doc["notes"] | ""));
+  appointments[target].year = doc["year"] | 0;
+  appointments[target].month = doc["month"] | 0;
+  appointments[target].day = doc["day"] | 0;
+  appointments[target].hour = doc["hour"] | 0;
+  appointments[target].minute = doc["minute"] | 0;
+  appointments[target].notified = false;
+
+  Serial.printf("[Appointment] '%s' set for %04d-%02d-%02d %02d:%02d\n",
+                appointments[target].title.c_str(), appointments[target].year,
+                appointments[target].month, appointments[target].day,
+                appointments[target].hour, appointments[target].minute);
+  server.send(200, "application/json", "{\"status\":\"scheduled\"}");
 }

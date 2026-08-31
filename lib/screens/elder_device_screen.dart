@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_strings.dart';
-import '../core/utils/helpers.dart';
+import '../core/theme/app_theme.dart';
 import '../models/device_model.dart';
 import '../providers/device_provider.dart';
 import '../widgets/common/custom_button.dart';
@@ -56,13 +56,9 @@ class _ElderDeviceScreenState extends State<ElderDeviceScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Register ElderLink Device',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: AppTheme.display(fontSize: 21, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Text(

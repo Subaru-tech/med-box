@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_strings.dart';
+import '../core/theme/app_theme.dart';
 import '../core/utils/helpers.dart';
 import '../core/utils/validators.dart';
 import '../models/appointment_model.dart';
@@ -11,6 +12,7 @@ import '../widgets/common/custom_button.dart';
 import '../widgets/common/custom_textfield.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/glass_container.dart';
+import '../widgets/icon_badge.dart';
 
 class AppointmentsScreen extends StatefulWidget {
   const AppointmentsScreen({super.key});
@@ -39,7 +41,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                     children: [
                       if (appointmentProvider.upcomingAppointments.isNotEmpty) ...[
                         const Text(
-                          '📅 Upcoming',
+                          'Upcoming',
                           style: TextStyle(
                             color: AppColors.textPrimary,
                             fontSize: 16,
@@ -54,7 +56,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                       ],
                       if (appointmentProvider.pastAppointments.isNotEmpty) ...[
                         const Text(
-                          '📋 Past',
+                          'Past',
                           style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 16,
@@ -128,13 +130,9 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Add Appointment',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: AppTheme.display(fontSize: 21, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 24),
                   CustomTextField(
@@ -290,19 +288,7 @@ class _AppointmentCard extends StatelessWidget {
       borderColor: isPast ? null : color.withAlpha(51),
       child: Row(
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: color.withAlpha(26),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.event,
-              color: color,
-              size: 22,
-            ),
-          ),
+          IconBadge(icon: Icons.event, color: color, size: 48, iconSize: 22),
           const SizedBox(width: 14),
           Expanded(
             child: Column(

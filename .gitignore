@@ -44,3 +44,14 @@ GoogleService-Info.plist
 analyze_output*.txt
 test_diag*.txt
 projects.txt
+
+# Sensitive / local-only — never commit
+firebase_token.txt
+full_url.txt
+
+# Stale debug output from old dev sessions
+final_analyze*.txt
+test_output.txt
+
+# Local Android toolchain (downloaded, not project-managed)
+/local.properties

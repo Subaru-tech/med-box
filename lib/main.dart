@@ -9,6 +9,7 @@ import 'providers/medication_provider.dart';
 import 'providers/message_provider.dart';
 import 'providers/appointment_provider.dart';
 import 'providers/alert_provider.dart';
+import 'providers/shell_nav_provider.dart';
 import 'routes.dart';
 import 'services/firebase_service.dart';
 
@@ -44,6 +45,7 @@ class ElderLinkApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MessageProvider()),
         ChangeNotifierProvider(create: (_) => AppointmentProvider()),
         ChangeNotifierProvider(create: (_) => AlertProvider()),
+        ChangeNotifierProvider(create: (_) => ShellNavProvider()),
       ],
       child: MaterialApp(
         title: AppStrings.appName,

@@ -13,36 +13,36 @@ class AmbientBackground extends StatelessWidget {
       children: [
         // Base dark black background
         Container(color: AppColors.background),
-        // Top right cyan blob
+        // Top right blue glow
         Positioned(
-          top: -100,
-          right: -100,
+          top: -120,
+          right: -120,
           child: Container(
             width: 300,
             height: 300,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.primary.withAlpha(50),
+              color: AppColors.primary.withAlpha(28),
             ),
           ),
         ),
-        // Bottom left magenta blob
+        // Bottom left teal glow
         Positioned(
-          bottom: -100,
-          left: -100,
+          bottom: -120,
+          left: -120,
           child: Container(
             width: 300,
             height: 300,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.accent.withAlpha(50),
+              color: AppColors.accent.withAlpha(20),
             ),
           ),
         ),
-        // Heavy blur over the blobs
+        // Heavy blur over the glow
         Positioned.fill(
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
+            filter: ImageFilter.blur(sigmaX: 120, sigmaY: 120),
             child: Container(color: Colors.transparent),
           ),
         ),
